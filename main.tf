@@ -250,3 +250,80 @@ resource "aws_lb" "webapp-LB" {
     Environment = "production"
   }
 }
+
+
+#launch Template
+
+resource "aws_launch_template" "webapp-launch-template" {
+  name = "webapp-launch-template"
+  image_id = "ami-0ad37e9b1d9b2b4c6"
+  instance_type = "t2.medium"
+  key_name = aws_key_pair.webapp-key-pair.id
+  vpc_security_group_ids = [aws_security_group.allow_ssh.id]
+
+  tag_specifications {
+    resource_type = "instance"
+
+    tags = {
+      Name = "webapp"
+    }
+  }
+
+  user_data = filebase64("example.sh")
+}
+
+
+#ASG
+
+resource "aws_autoscaling_group" "webapp-ASG" {
+  #availability_zones = ["ap-south-1a","ap-south-1b","ap-south-1c"]
+  desired_capacity   = 2
+  max_size           = 5
+  min_size           = 2
+  vpc_zone_identifier = [aws_subnet.webapp-subnet-1a.id,aws_subnet.webapp-subnet-1b.id,aws_subnet.webapp-subnet-1c.id]
+
+  launch_template {
+    id      = aws_launch_template.webapp-launch-template.id
+    version = "$Latest"
+  }
+  target_group_arns = [aws_lb_target_group.webapp-TG-1.arn]
+}
+
+# ALB TG with ASG
+
+resource "aws_lb_target_group" "webapp-TG-1" {
+  name     = "webapp-TG-1"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.webapp-vpc.id
+}
+
+
+# LB Listener with ASG
+
+resource "aws_lb_listener" "webapp-listener-1" {
+  load_balancer_arn = aws_lb.webapp-LB-1.arn
+  port              = "80"
+  protocol          = "HTTP"
+ 
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.webapp-TG-1.arn
+  }
+}
+
+
+#load balancer with ASG
+
+resource "aws_lb" "webapp-LB-1" {
+  name               = "Webapp-LB-1"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.allow_ssh.id]
+  subnets            = [aws_subnet.webapp-subnet-1a.id,aws_subnet.webapp-subnet-1b.id,aws_subnet.webapp-subnet-1c.id]
+
+
+  tags = {
+    Environment = "production"
+  }
+}
